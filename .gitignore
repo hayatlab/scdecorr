@@ -1,0 +1,6 @@
+cluster_logs/
+figures/
+testscript_train/runs/
+testscript_train/wandb/
+__pycache__/
+core.login-*

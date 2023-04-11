@@ -1,0 +1,242 @@
+import numpy as np
+
+from scib.metrics import silhouette_batch, kBET, graph_connectivity, ari, nmi, silhouette, isolated_labels_f1, isolated_labels_asw
+import scanpy as sc
+import pandas as pd
+
+import os
+from pathlib import Path
+from evaluation_scratch import Eval
+class EvalMetrics():
+    def __init__(self, adata, feature_obsm_name='X_emb', batch_obs_name='batch', cell_type_obs_name='cell_type',sample=1,knn=30,n_jobs=-1):
+
+        self.eval_scratch = Eval(adata, feature_obsm_name, batch_obs_name, cell_type_obs_name,sample_size=sample,knn=knn,n_jobs=n_jobs)
+
+        self.adata = adata
+        self.feature_obsm_name = feature_obsm_name
+        self.batch_obs_name = batch_obs_name
+        self.cell_type_obs_name = cell_type_obs_name
+        self.batch_metrics = ['entropy','batch_asw','wisi','kbet','graph_connect']
+        self.bioconsv_metrics = ['ari','nmi','silhouette','isolated_ASW','isolated_labels_F1','cisi']
+
+
+
+    ######################################
+    #######Batch Correction Metrics#######
+    ######################################
+
+    def entropy(self):
+
+        print('[INFO]...Computing Shannon Entropy...',flush=True)
+        entropy_score = self.eval_scratch.shannon_entropy_score()
+        print('entropy_score = ',entropy_score,flush=True)
+        return entropy_score
+
+
+    def batch_asw(self):
+
+        print('[INFO]...Computing Batch Average Silhouette Width (ASW)...',flush=True)
+
+        batch_asw_score = silhouette_batch(self.adata,self.batch_obs_name,self.cell_type_obs_name,self.feature_obsm_name)
+        print('batch_asw_score = ',batch_asw_score,flush=True)
+        return batch_asw_score
+
+
+    def wisi(self):
+
+        print('[INFO]...Computing Weighted Inverse Simpson Index...',flush=True)
+        wisi_score = self.eval_scratch.wisi()
+        print('wisi_score = ',wisi_score,flush=True)
+        return wisi_score
+
+
+    def kbet(self):
+        print('[INFO]...Computing k-nearest neighbour batch effect test (kBET) score...',flush=True)
+        kbet_score = kBET(self.adata,self.batch_obs_name,self.cell_type_obs_name,type_="embed",embed=self.feature_obsm_name)
+        print('kbet_score = ',kbet_score,flush=True)
+        return kbet_score
+
+    def graph_connect(self):
+        print('[INFO]...Computing Graph Connectivity score...',flush=True)
+        neighbors_key = '{use_rep}_neighbor'.format(use_rep=self.feature_obsm_name)
+
+        sc.pp.neighbors(self.adata,use_rep=self.feature_obsm_name,key_added=neighbors_key)
+        gc = graph_connectivity(self.adata,self.cell_type_obs_name)
+        print('graph_connect = ',gc,flush=True)
+        return gc
+
+    def compute_batch_metrics(self,metrics=None):
+
+        batch_metrics = metrics if metrics is not None else self.batch_metrics
+        metrics_dict = {}
+
+        scores_mean = 0
+
+        for batch_metric in batch_metrics:
+            if batch_metric == 'entropy':
+                score = self.entropy()
+            elif batch_metric == 'batch_asw':
+                score = self.batch_asw()
+            elif batch_metric == 'wisi':
+                score = self.wisi()
+            elif batch_metric == 'kBET':
+                score = self.kbet()
+            elif batch_metric == 'graph_connect':
+                score = self.graph_connect()
+
+            metrics_dict[batch_metric] = score
+            scores_mean += score
+
+        scores_mean = scores_mean/len(batch_metrics)
+        print('Batch metrics_dict',metrics_dict)
+
+        metrics_dict['score'] = scores_mean
+
+        return pd.DataFrame(metrics_dict,index=[0])
+
+
+    #############################################
+    #######Biological Conservation Metrics#######
+    #############################################
+
+
+    def ARI(self):
+
+        print('[INFO]...Computing Adjusted Rand Index (ARI)...',flush=True)
+
+        leiden_ari = ari(self.adata,'leiden_{use_rep}'.format(use_rep=self.feature_obsm_name),self.cell_type_obs_name)
+        louvain_ari = ari(self.adata,'louvain_{use_rep}'.format(use_rep=self.feature_obsm_name),self.cell_type_obs_name)
+        mean_ari = (leiden_ari+louvain_ari)/2
+        max_ari = max(leiden_ari,louvain_ari)
+
+        print('Leiden ARI = ',leiden_ari,flush=True)
+        print('Louvain ARI = ',louvain_ari,flush=True)
+        return {'leiden':leiden_ari,'louvain':louvain_ari,'mean':mean_ari,'max':max_ari}
+
+
+    def NMI(self):
+
+        print('[INFO]...Computing Normalized Mutual Information (NMI)...',flush=True)
+
+        leiden_nmi = nmi(self.adata,'leiden_{use_rep}'.format(use_rep=self.feature_obsm_name),self.cell_type_obs_name)
+        louvain_nmi = nmi(self.adata,'louvain_{use_rep}'.format(use_rep=self.feature_obsm_name),self.cell_type_obs_name)
+        mean_nmi = (leiden_nmi+louvain_nmi)/2
+        max_nmi = max(leiden_nmi,louvain_nmi)
+
+        print('Leiden NMI = ',leiden_nmi,flush=True)
+        print('Louvain NMI = ',louvain_nmi,flush=True)
+
+        return {'leiden':leiden_nmi,'louvain':louvain_nmi,'mean':mean_nmi,'max':max_nmi}
+
+
+    def cell_type_silhouette_score(self):
+
+        print('[INFO]...Computing Cell Type Silhouette Score (csil)...',flush=True)
+
+        cell_type_sil = silhouette(self.adata,self.cell_type_obs_name,self.feature_obsm_name)
+
+        print('Cell type sil csil = ',cell_type_sil,flush=True)
+
+        return cell_type_sil
+
+
+    def isolated_ASW(self):
+
+        print('[INFO]...Computing Isolated label score ASW...',flush=True)
+
+        il_asw = isolated_labels_asw(self.adata,self.cell_type_obs_name,self.batch_obs_name,self.feature_obsm_name)
+
+        print('Isolated label score ASW = ',il_asw,flush=True)
+
+        return il_asw
+
+    def isolated_F1(self):
+        print('[INFO]...Computing Isolated label score F1...',flush=True)
+
+        il_f1 = isolated_labels_f1(self.adata,self.cell_type_obs_name,self.batch_obs_name,self.feature_obsm_name)
+
+        print('Isolated label score F1 = ',il_f1,flush=True)
+
+        return il_f1
+
+
+    def cisi(self):
+
+        print('[INFO]...Computing Cell Type Inverse Simpson Index...',flush=True)
+        cisi_score = self.eval_scratch.cisi()
+        print('cisi_score_score = ',cisi_score,flush=True)
+        return cisi_score
+
+
+    def compute_cell_type_metrics(self,metrics=None):
+
+        cell_type_metrics = metrics if metrics is not None else self.bioconsv_metrics
+        metrics_dict = {}
+
+        scores_mean_avg = 0
+        scores_mean_max = 0
+
+        for cell_type_metric in cell_type_metrics:
+            if cell_type_metric == 'ari':
+                score = self.ARI()
+                metrics_dict['leiden.ARI'] = score['leiden']
+                metrics_dict['louvain.ARI'] = score['louvain']
+
+                scores_mean_avg += score['mean']
+                scores_mean_max += score['max']
+
+            elif cell_type_metric == 'nmi':
+                score = self.NMI()
+                metrics_dict['leiden.NMI'] = score['leiden']
+                metrics_dict['louvain.NMI'] = score['louvain']
+
+                scores_mean_avg += score['mean']
+                scores_mean_max += score['max']
+
+            elif cell_type_metric == 'silhouette':
+                score = self.cell_type_silhouette_score()
+                metrics_dict['silhouette'] = score
+                scores_mean_avg += score
+                scores_mean_max += score
+
+            elif cell_type_metric == 'isolated_ASW':
+                score = self.cell_type_silhouette_score()
+                metrics_dict['isolated_ASW'] = score
+                scores_mean_avg += score
+                scores_mean_max += score
+
+            elif cell_type_metric == 'isolated_labels_F1':
+                score = self.isolated_F1()
+                metrics_dict['isolated_F1'] = score
+                scores_mean_avg += score
+                scores_mean_max += score
+
+
+            elif cell_type_metric == 'cisi':
+                score = self.cisi()
+                metrics_dict['cisi'] = score
+
+                scores_mean_avg += score
+                scores_mean_max += score
+
+
+        scores_mean_avg = scores_mean_avg/len(cell_type_metrics)
+        scores_mean_max = scores_mean_max/len(cell_type_metrics)
+
+        print('Cell type metrics_dict',metrics_dict)
+
+        metrics_dict['score_avg'] = scores_mean_avg
+        metrics_dict['score_max'] = scores_mean_max
+
+        return pd.DataFrame(metrics_dict,index=[0])
+
+
+
+
+    def compute_all_metrics(self):
+        cell_type_metrics = self.compute_cell_type_metrics()
+        batch_metrics = self.compute_batch_metrics()
+
+        return {'batch_metrics':batch_metrics, 'cell_type_metrics':cell_type_metrics}
+
+
