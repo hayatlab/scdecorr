@@ -131,7 +131,7 @@ class DownstreamTaskRun():
 
         self.adata.obsm[self.feature_obsm_names] = features
         return self.adata
-    
+
 
 
     def classify_run_(self,task_dir,classify_model="xgb",n_jobs=-1):
@@ -143,111 +143,102 @@ class DownstreamTaskRun():
                             self.feature_obsm_names,self.cell_class_obs_name,\
                                 self.batch_obs_name,classify_model)
 
-        cum_batch_scores = classify.eval_multi(n_jobs)
+        cum_batch_scores = classify.eval_multi(n_jobs=n_jobs)
         print('[INFO]...Classify run finished...')
 
         return cum_batch_scores
 
 
 
-    def cluster_run_(self,task_dir,save_adata=False):
+    def cluster_run_(self,task_dir,mode='eval',save_adata=False,**kwargs):
         print('[INFO]...Cluster run started...')
+
+        if mode not in ['eval','plot']:
+            raise Exception('WrongModeError: Arg mode should be in [eval,plot]')
 
         cluster = Cluster(self.adata,self.method_ids,'cluster',\
                             self.dataset_name,self.dataset_root_dir,self.method_root_dir,task_dir,\
                             self.feature_obsm_names,self.cell_class_obs_name,\
                                 self.batch_obs_name)
 
-        self.adata,metric_scores = cluster.eval()
+        if mode == 'eval':
+            metrics = kwargs.get('cluster_metrics')
+            self.adata,metric_scores = cluster.eval(metrics=metrics)
+
+        elif mode == 'plot':
+            cluster.plot()
 
         if save_adata:
             self.out_adata()
+
+
         print('[INFO]...Cluster run finished...')
 
         return self.adata,metric_scores
 
 
-    def batch_correct_run_(self,task_dir):
+    def batch_correct_run_(self,task_dir,mode='eval',**kwargs):
         print('[INFO]...Batch Correct run started...')
+        print(kwargs)
+
+        if mode not in ['eval','plot']:
+            raise Exception('WrongModeError: Arg mode should be in [eval,plot]')
 
         batch_correct = BatchCorrect(self.adata,self.method_ids,'batch_correct',\
                             self.dataset_name,self.dataset_root_dir,self.method_root_dir,task_dir,\
                             self.feature_obsm_names,self.cell_class_obs_name,\
                                 self.batch_obs_name)
 
-        metric_scores = batch_correct.eval()
+        if mode == 'eval':
+            metrics = kwargs.get('batch_metrics')
+            print('metrics1  \n\n',metrics)
+            metric_scores = batch_correct.eval(metrics=metrics)
+
+        elif mode == 'plot':
+            batch_correct.plot()
+
         print('[INFO]...Batch Correct run finished...')
 
         return metric_scores
 
 
+    #classify_model="xgb",save_adata=False,n_jobs=-1
+    def call_task_(self,task,task_dir,**kwargs):
 
-    def call_task_(self,task,task_dir,classify_model="xgb",save_adata=False,n_jobs=-1):
         if task == 'classify':
+            classify_model = kwargs.get('classify_model','xgb')
+
+            #n_jobs for training classifier 
+            n_jobs = kwargs.get('clf_n_jobs',-1)
             self.classify_run_(task_dir=task_dir,classify_model=classify_model,n_jobs=n_jobs)
 
         elif task == 'cluster':
-            self.cluster_run_(task_dir=task_dir,save_adata=save_adata)
+            save_adata = kwargs.get('save_adata',False)
+            mode = kwargs.get('mode','eval')
+            metrics = kwargs.get('cluster_metrics',None)
+
+            self.cluster_run_(task_dir=task_dir,mode=mode,save_adata=save_adata,cluster_metrics=metrics)
 
         elif task == 'batch_correct':
-            self.batch_correct_run_(task_dir=task_dir)
+            mode = kwargs.get('mode','eval')
+            metrics = kwargs.get('batch_metrics',None)
+            self.batch_correct_run_(task_dir=task_dir,mode=mode,batch_metrics=metrics)
 
 
 
     def run(self,**kwargs):
+        print('KWARGS ', kwargs)
+        if self.benchmark_eval:
+            raise Exception('Arg benchmark_eval should be checked False')
 
         if self.task == 'all':
             print('[INFO]...All downstream tasks run started...')
-            if self.benchmark_eval:
-                raise Exception('Only single method allowed if task is All. Check benchmark_eval=False')
+
             for task in self.all_tasks:
-                self.call_task_(task,self.task_dirs[task],kwargs['classify_model'],kwargs['save_adata'],kwargs['n_jobs'])
+                self.call_task_(task,self.task_dirs[task],**kwargs)
 
-
-        elif self.task == 'cluster_n_batch':
-            if not self.benchmark_eval:
-                raise Exception('Benchmark eval mode should be checked. Check benchmark_eval=True')
-
-            print('[INFO]...Cluster and Batch Correct run started...')
-
-            clnbc = ClusterAndBatchCorrect(self.adata,self.method_ids,self.task,self.dataset_name,self.dataset_root_dir,self.results_dir,self.task_dir,\
-                            self.feature_obsm_names,self.cell_class_obs_name,self.batch_obs_name)
-
-            results = clnbc.eval_bench()
-            print('[INFO]...Cluster and Batch Correct run finished...')
-            return results
-
-
-
-        elif self.task == 'classify':
-            if 'classify_model' not in list(kwargs.keys()):
-                raise Exception('classify model has to be provided: i.e xgb/knn')
-
-            print('[INFO]...Classify run started...')
-            if self.benchmark_eval:
-                raise Exception('Only single method allowed if task is Classify. Check benchmark_eval=False')
-
-            return self.classify_run_(task_dir=self.task_dir,classify_model=kwargs['classify_model'],n_jobs=kwargs['n_jobs'])
-
-
-        elif self.task == 'cluster':
-
-            print('[INFO]...Cluster run started...')
-            if self.benchmark_eval:
-                raise Exception('Only single method allowed if task is Cluster. Check benchmark_eval=False')
-
-            return self.cluster_run_(task_dir=self.task_dir,save_adata=kwargs['save_adata'])
-
-
-        elif self.task == 'batch_correct':
-
-            print('[INFO]...Batch Correct run started...')
-            if self.benchmark_eval:
-                raise Exception('Only single method allowed if task is BatchCorrect. Check benchmark_eval=False')
-
-            return self.batch_correct_run_(task_dir=self.task_dir)
-
-
+        else:
+            self.call_task_(self.task,self.task_dir,**kwargs)
 
 
 
@@ -427,14 +418,26 @@ class Cluster(BaseDownstream):
         dutils.plot_clusters(self.adata, self.feature_obsm_name,self.dataset_name,\
                                             self.cell_class_obs_name,leiden=True,louvain=True,save_dir=self.task_dir,sc_fidgdir=sc.settings.figdir)
 
-    def eval(self,plot=True,save=True):
+    #method for only plotting the clusters
+    def plot(self):
+        super().eval()
+        print('[INFO]...Computing clusters...')
+        self.adata = self.compute_clusters()
+        print('[INFO]...Plotting UMAPs...')
+        self.plot_umap()
+
+        return self.adata
+
+
+
+    def eval(self,metrics=None,plot=True,save=True):
         super().eval(plot=plot,save=save)
         print('[INFO]...Computing clusters...')
         self.adata = self.compute_clusters()
         print('[INFO]...Eval Started...')
 
         eval_metrics = EvalMetrics(self.adata, self.feature_obsm_name, self.batch_obs_name, self.cell_class_obs_name)
-        metric_scores = eval_metrics.compute_cell_type_metrics()
+        metric_scores = eval_metrics.compute_cell_type_metrics(metrics)
 
         print('Metric scores ',metric_scores)
         if save:
@@ -444,7 +447,7 @@ class Cluster(BaseDownstream):
         if plot:
             print('[INFO]...Plotting UMAPs...')
             self.plot_umap()
-        
+
         return self.adata, metric_scores
 
 
@@ -465,19 +468,33 @@ class BatchCorrect(BaseDownstream):
 
         print(vars(self))
 
+
     def plot_umap(self):
 
 
         dutils.plot_clusters(self.adata, self.feature_obsm_name,self.dataset_name,\
                                             self.batch_obs_name,save_dir=self.task_dir,sc_fidgdir=sc.settings.figdir)
 
-    def eval(self,plot=True,save=True):
+
+    #method for only plotting the clusters
+    def plot(self):
+        super().eval()
+
+        print('[INFO]...Plotting UMAPs...')
+        self.plot_umap()
+
+        return self.adata
+
+
+
+    def eval(self,metrics=None,plot=True,save=True):
         super().eval(plot=plot,save=save)
 
         print('[INFO]...Eval Started...')
 
+        print('   METRICS     \n\n ',metrics)
         eval_metrics = EvalMetrics(self.adata, self.feature_obsm_name, self.batch_obs_name, self.cell_class_obs_name)
-        metric_scores = eval_metrics.compute_batch_metrics()
+        metric_scores = eval_metrics.compute_batch_metrics(metrics=metrics)
 
         print('Metric scores ',metric_scores)
         if save:

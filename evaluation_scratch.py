@@ -42,13 +42,13 @@ class Eval():
     #find knn of every query point in X_sampled after fitting a KDTree on X
     def compute_nearest_neighbors(self,knn=30,n_jobs=10):
 
-        print('[INFO]...Computing Nearest Neighbors...',flush=True)
+        print('[INFO]...Computing Nearest Neighbors with k ={knn}...'.format(knn=knn),flush=True)
         nbrs = NearestNeighbors(n_neighbors=knn, algorithm='kd_tree',n_jobs=self.n_jobs).fit(self.X)
         distances, indices = nbrs.kneighbors(self.X_sampled)
 
         print('[INFO]...Nearest Neighbors Search Complete...',flush=True)
-        np.save('/home/noco0013/projects/contrastive_learning/data/kidney/pca_300knn_dists.npy',distances)
-        np.save('/home/noco0013/projects/contrastive_learning/data/kidney/pca_300knn_indices.npy',indices)
+        #np.save('/home/noco0013/projects/contrastive_learning/data/kidney/pca_300knn_dists.npy',distances)
+        #np.save('/home/noco0013/projects/contrastive_learning/data/kidney/pca_300knn_indices.npy',indices)
 
         return distances,indices
 

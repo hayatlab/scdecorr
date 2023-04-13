@@ -16,6 +16,58 @@ import shutil
 
 
 
+
+def convert_to_sparse_(adata):
+
+    from scipy.sparse._csr import csr_matrix
+
+    if type(adata.X) == np.ndarray:
+        adata.X = csr_matrix(adata.X)
+
+    if type(adata.layers['counts']) == np.ndarray:
+        adata.layers['counts'] = csr_matrix(adata.layers['counts'])
+
+    print(type(adata.X))
+    print(type(adata.layers['counts']))
+
+
+    return adata
+
+
+def compute_mul_embs_mul_data(datasets,root_dir,method_ids):
+
+    from benchmarking import Benchmark
+    from dataset_cfg import dataset_cfg
+
+    for dataset in datasets:
+        print('[INFO]...Processing dataset {dataset}...'.format(dataset=dataset))
+
+        dataset_root_dir = os.path.join(root_dir,dataset)
+        adata_fname = dataset_cfg[dataset]['adata_fname']
+        dataset_name = dataset
+        cell_class_obs_name = dataset_cfg[dataset]['cell_class_obs_name']
+        batch_obs_name = dataset_cfg[dataset]['batch_obs_name']
+        checkpoint_root = dataset_cfg[dataset]['checkpoint_root']
+        in_features = dataset_cfg[dataset]['in_features']
+        arch = dataset_cfg[dataset]['arch']
+
+
+
+        bench = Benchmark(dataset_root_dir,adata_fname,dataset_name,cell_class_obs_name,batch_obs_name)
+
+        print('dataset_name,dataset_root_dir,adata_fname,cell_class_obs_name,batch_obs_name \n',\
+            dataset_name,dataset_root_dir,adata_fname,cell_class_obs_name,batch_obs_name)
+
+
+        for method_id in method_ids:
+            print('[INFO]...Computing features of dataset {dataset} using {method_id} started...'.format(dataset=dataset,method_id=method_id))
+            bench.compute_features(method_id,save_features=True,checkpoint_root=checkpoint_root,in_features=in_features,arch=arch)
+            time.sleep(1)
+            print('[INFO]...Computing features of dataset {dataset} using {method_id} finished...'.format(dataset=dataset,method_id=method_id))
+
+        print('[INFO]...Processing dataset {dataset} finished...'.format(dataset=dataset))
+
+
 #methods_tasks_list=[{'method_id':..,'feature_obsm'..,'task':..},.....]
 def gen_obsmname_task_tuples_(methods_tasks_list):
 
@@ -66,7 +118,7 @@ def plot_clusters(adata,use_rep,dataset_name,obs_name,leiden=False,louvain=False
 
     for obs_name_ in obs_names:
         umap_fname = "_{dataset}_{use_rep}_{obs_name}.png".format(dataset=dataset_name,use_rep=use_rep,obs_name=obs_name_)
-        sc.pl.umap(adata, color=[obs_name_],save=umap_fname,show=False)
+        sc.pl.umap(adata, color=[obs_name_],save=umap_fname,legend_fontsize='xx-large',legend_fontweight='black',show=False)
 
         #copy UMAP to another file
         if save_dir and sc_fidgdir:

@@ -71,10 +71,7 @@ def preprocess_adata(adata,min_cells=3,layer=None,normalize=False,log1p=False,n_
 
     if layer is not None:
         print('type layers',type(adata.layers[layer]))
-        try:
-            adata.X = adata.layers[layer].copy()
-        except AttributeError:
-            adata.X = adata.layers[layer].toarray().copy()
+        adata.X = adata.layers[layer].copy()
 
 
     tmp_bdata = adata.copy()

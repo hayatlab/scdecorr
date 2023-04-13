@@ -6,7 +6,7 @@ import scib.integration as integration
 import yaml
 import tempfile
 import warnings
-from downstream_utils import gen_obsmname_task_tuples_
+import downstream_utils as dutils
 
 class Benchmark():
     def __init__(self,dataset_root_dir,adata_fname,dataset_name,cell_class_obs_name="cell_type",batch_obs_name='batch'):
@@ -27,6 +27,7 @@ class Benchmark():
         self.cell_class_obs_name = cell_class_obs_name
         self.dataset_name = dataset_name
         self.task_list = ['cluster','batch_correct','classify','all']
+        self.methods_list = ['sctwins-dsbn','scVI','harmony','scanorama','liger','bbknn']
 
 
     # loads features from the checkpoint, 
@@ -42,13 +43,19 @@ class Benchmark():
 
 
 
+
+
+
     def compute_harmony_features_(self):
 
         from harmony import harmonize
 
         print('[INFO]...Computing harmony features...')
-        print('[INFO]...Computing X_pca')
         adata = self.adata.copy()
+
+        adata = dutils.convert_to_sparse_(adata)
+
+        print('[INFO]...Computing X_pca')
 
         sc.tl.pca(adata)
         features = harmonize(adata.obsm["X_pca"], adata.obs, batch_key=self.batch_obs_name)
@@ -60,6 +67,9 @@ class Benchmark():
     def compute_scVI_features_(self,max_epochs=100):
         print('[INFO]...Computing scVI features...')
         adata = self.adata.copy()
+
+        adata = dutils.convert_to_sparse_(adata)
+
         scvi_model = integration.scvi(adata, self.batch_obs_name, hvg=None, return_model=True, max_epochs=max_epochs)
         features = scvi_model.get_latent_representation()
         print('features shape',features.shape)
@@ -73,6 +83,7 @@ class Benchmark():
 
         print('[INFO]...Computing BBKNN features...')
         adata = self.adata.copy()
+        adata = dutils.convert_to_sparse_(adata)
 
 
         adata = integration.bbknn(adata, self.batch_obs_name, hvg=None)
@@ -95,6 +106,7 @@ class Benchmark():
 
         print('[INFO]...Computing Scanorama features...')
         adata = self.adata.copy()
+        adata = dutils.convert_to_sparse_(adata)
 
         try:
             del adata.obsm['X_emb']
@@ -119,8 +131,15 @@ class Benchmark():
 
         import pyliger
 
+
         adata = self.adata.copy()
-        print(adata)
+        print('type(adata.X) ',type(self.adata.X))
+
+        adata = dutils.convert_to_sparse_(adata)
+
+        print('type(adata.X) ',type(adata.X))
+        print('type(adata.layers) ',type(adata.layers['counts']))
+
 
         batch_cats = adata.obs[self.batch_obs_name].cat.categories
 
@@ -128,6 +147,8 @@ class Benchmark():
         # Pyliger normalizes by library size with a size factor of 1
         # So here we give it the count data
         bdata.X = bdata.layers["counts"]
+
+        print('type(bdata.X) ',type(bdata.X))
 
         # List of adata per batch
         adata_list = [bdata[bdata.obs[self.batch_obs_name] == b].copy() for b in batch_cats]
@@ -162,6 +183,7 @@ class Benchmark():
     def compute_scanvi_features_(self):
         print('[INFO]...Computing scANVI features...')
         adata = self.adata.copy()
+        adata = dutils.convert_to_sparse_(adata)
 
         try:
             del adata.obsm['X_emb']
@@ -332,30 +354,123 @@ class Benchmark():
 
 
 
-    def eval_(self,method_id,feature_obsm_name=None,task='all'):
+    def eval_(self,method_id,feature_obsm_name=None,task='all',**kwargs):
 
         feature_obsm_name = [feature_obsm_name] if feature_obsm_name is not None else None
 
         taskrun = DownstreamTaskRun(dataset_root_dir=self.dataset_root_dir,adata_fname=self.adata_fname,method_ids=[method_id],task=task,dataset_name=self.dataset_name,\
                             cell_class_obs_name=self.cell_class_obs_name,batch_obs_name=self.batch_obs_name,feature_obsm_names=feature_obsm_name)
-        taskrun.run(save_adata=False,classify_model="xgb",n_jobs=-1)
+
+        taskrun.run(**kwargs)
 
 
 
-    def eval_benchmark_multicore(self,methods_tasks_list,n_jobs=-1):
 
+    def eval_benchmark(self,methods_tasks_list,**kwargs):
+
+        print('...Running sequential benchmark pipeline...')
+
+        for (method_id,feature_obsm_name,task) in dutils.gen_obsmname_task_tuples_(methods_tasks_list):
+            print('[INFO]...Task {task} on {method_id} started...'.format(task=task,method_id=method_id))
+            self.eval_(method_id,feature_obsm_name,task,**kwargs)
+            print('[INFO]...Task {task} on {method_id} finished...'.format(task=task,method_id=method_id))
+
+
+    #dont use multicore for classify tasks
+    def eval_benchmark_multicore(self,methods_tasks_list,n_jobs=-1,**kwargs):
+
+        print('...Running parallel benchmark pipeline...')
         from joblib import Parallel, delayed
 
-        Parallel(n_jobs=n_jobs)(delayed(self.eval_)(method_id,feature_obsm_name,task)\
-                                 for (method_id,feature_obsm_name,task) in gen_obsmname_task_tuples_(methods_tasks_list))
+
+        Parallel(n_jobs=n_jobs)(delayed(self.eval_)(method_id,feature_obsm_name,task,**kwargs)\
+                                 for (method_id,feature_obsm_name,task) in dutils.gen_obsmname_task_tuples_(methods_tasks_list))
 
 
-    def eval_benchmark(self,methods_tasks_list):
 
-        for (method_id,feature_obsm_name,task) in gen_obsmname_task_tuples_(methods_tasks_list):
-            print('[INFO]...Task {task} on {method_id} started...'.format(task=task,method_id=method_id))
-            self.eval_(method_id,feature_obsm_name,task)
-            print('[INFO]...Task {task} on {method_id} finished...'.format(task=task,method_id=method_id))
+    def eval_benchmark_cluster_and_batch(self,method_ids=None,mode='eval',cluster_metrics=None,batch_metrics=None,n_jobs=1):
+
+        if not method_ids:
+            method_ids = list(map(lambda x:x+'_v1',self.methods_list))
+
+        print('method_ids ',method_ids)
+
+        methods_tasks_list = []
+
+        for method_id in method_ids:
+            methods_tasks_list.append({'method_id':method_id,'task':'cluster'})
+            methods_tasks_list.append({'method_id':method_id,'task':'batch_correct'})
+
+
+        print('methods_tasks_list ',methods_tasks_list)
+        if n_jobs == -1 or n_jobs > 1:
+            self.eval_benchmark_multicore(methods_tasks_list=methods_tasks_list,n_jobs=n_jobs,\
+                                            mode=mode,cluster_metrics=cluster_metrics,batch_metrics=batch_metrics)
+
+
+        elif n_jobs == 1:
+            self.eval_benchmark(methods_tasks_list,mode=mode,cluster_metrics=cluster_metrics,batch_metrics=batch_metrics)
+
+        else:
+            raise Exception('n_jobs should either be eq to -1 or geq 1!')
+
+
+
+
+
+    def eval_benchmark_batch(self,method_ids=None,mode='eval',batch_metrics=None):
+
+        if not method_ids:
+            method_ids = list(map(lambda x:x+'_v1',self.methods_list))
+
+        print('method_ids ',method_ids)
+
+        methods_tasks_list = []
+
+        for method_id in method_ids:
+            methods_tasks_list.append({'method_id':method_id,'task':'batch_correct'})
+
+
+        print('methods_tasks_list ',methods_tasks_list)
+        self.eval_benchmark(methods_tasks_list,mode=mode,batch_metrics=batch_metrics)
+
+
+
+    def eval_benchmark_cluster(self,method_ids=None,mode='eval',cluster_metrics=None):
+
+        if not method_ids:
+            method_ids = list(map(lambda x:x+'_v1',self.methods_list))
+
+        print('method_ids ',method_ids)
+
+        methods_tasks_list = []
+
+        for method_id in method_ids:
+            methods_tasks_list.append({'method_id':method_id,'task':'cluster'})
+
+
+        print('methods_tasks_list ',methods_tasks_list)
+        self.eval_benchmark(methods_tasks_list,mode=mode,cluster_metrics=cluster_metrics)
+
+
+
+    #use this for classify jobs
+    def eval_benchmark_classify(self,method_ids=None,classify_model='xgb',clf_n_jobs=-1):
+
+        if not method_ids:
+            method_ids = list(map(lambda x:x+'_v1',self.methods_list))
+
+        print('method_ids ',method_ids)
+
+        methods_tasks_list = []
+
+        for method_id in method_ids:
+            methods_tasks_list.append({'method_id':method_id,'task':'classify'})
+
+
+        print('methods_tasks_list ',methods_tasks_list)
+
+        self.eval_benchmark(methods_tasks_list,classify_model=classify_model,clf_n_jobs=clf_n_jobs)
 
 
 

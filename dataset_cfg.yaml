@@ -1,0 +1,45 @@
+Muris:
+  adata_fname: muris_sample_filter.h5ad
+  arch: densenet21
+  batch_obs_name: batch
+  cell_class_obs_name: cell_ontology_class
+  checkpoint_root: /home/noco0013/projects/rito-single-cell-integration-contrastive/barlowtwins/checkpoint_densenet21_muris_hvg_5000_unscaled_multi_dom_train_dsbn_minibatch=2048_optim=adam/epoch_800
+  in_features: 5000
+broad+hca:
+  adata_fname: ''
+  batch_obs_name: ''
+  cell_class_obs_name: ''
+  checkpoint_root: ''
+crosstissue_immune:
+  adata_fname: t-cells-raw-counts.h5ad
+  arch: densenet21
+  batch_obs_name: Chemistry
+  cell_class_obs_name: Manually_curated_celltype
+  checkpoint_root: /home/noco0013/projects/rito-single-cell-integration-contrastive/barlowtwins/checkpoint_densenet21_crosstissue_immune_cells_unscaled_multi_dom_train_dsbn_minibatch=2048_optim=adam/epoch_720
+  in_features: 2000
+human_immune:
+  adata_fname: Immune_ALL_human.h5ad
+  arch: densenet11
+  batch_obs_name: batch
+  cell_class_obs_name: final_annotation
+  checkpoint_root: /home/noco0013/projects/rito-single-cell-integration-contrastive/barlowtwins/checkpoint_densenet11_immhuman_unscaled_multi_dom_train_dsbn_minibatch=512_projector=512-512-512_optim=adam/epoch_500
+  in_features: 2000
+human_lungs:
+  adata_fname: Lung_atlas_public_original_adata_X_unscaled.h5ad
+  arch: densenet11
+  batch_obs_name: batch
+  cell_class_obs_name: cell_type
+  checkpoint_root: /home/noco0013/projects/rito-single-cell-integration-contrastive/barlowtwins/checkpoint_densenet11_lungs_original_X_unscaled_multi_dom_train_dsbn_minibatch=512_projector=512-512-512_optim=adam/epoch_999
+  in_features: 2000
+human_pancreas:
+  adata_fname: human_pancreas_norm_unscaled.h5ad
+  arch: densenet11
+  batch_obs_name: tech
+  cell_class_obs_name: celltype
+  checkpoint_root: /home/noco0013/projects/rito-single-cell-integration-contrastive/barlowtwins/checkpoint_densenet11_pancreas_unscaled_multi_dom_train_dsbn_minibatch=512_projector_512-512-512_optim=adam/epoch_499
+  in_features: 2000
+kidney:
+  adata_fname: ''
+  batch_obs_name: ''
+  cell_class_obs_name: ''
+  checkpoint_root: ''

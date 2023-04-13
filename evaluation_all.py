@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from evaluation_scratch import Eval
 class EvalMetrics():
-    def __init__(self, adata, feature_obsm_name='X_emb', batch_obs_name='batch', cell_type_obs_name='cell_type',sample=1,knn=30,n_jobs=-1):
+    def __init__(self, adata, feature_obsm_name='X_emb', batch_obs_name='batch', cell_type_obs_name='cell_type',sample=1,knn=15,n_jobs=-1):
 
         self.eval_scratch = Eval(adata, feature_obsm_name, batch_obs_name, cell_type_obs_name,sample_size=sample,knn=knn,n_jobs=n_jobs)
 
@@ -16,9 +16,12 @@ class EvalMetrics():
         self.feature_obsm_name = feature_obsm_name
         self.batch_obs_name = batch_obs_name
         self.cell_type_obs_name = cell_type_obs_name
-        self.batch_metrics = ['entropy','batch_asw','wisi','kbet','graph_connect']
-        self.bioconsv_metrics = ['ari','nmi','silhouette','isolated_ASW','isolated_labels_F1','cisi']
+        self.batch_metrics = ['batch_asw','kbet','graph_connect']
+        #self.bioconsv_metrics = ['ari','nmi','silhouette','isolated_ASW','isolated_labels_F1','cisi']
+        self.bioconsv_metrics = ['ari','nmi','silhouette','isolated_asw']
+        #self.bioconsv_metrics = ['ari','nmi','silhouette','isolated_asw','isolated_f1']
 
+        #isolated_f1 takes a lot of compute time for large datasets
 
 
     ######################################
@@ -68,6 +71,7 @@ class EvalMetrics():
     def compute_batch_metrics(self,metrics=None):
 
         batch_metrics = metrics if metrics is not None else self.batch_metrics
+        print('batch_metrics from eval_all', metrics)
         metrics_dict = {}
 
         scores_mean = 0
@@ -79,10 +83,12 @@ class EvalMetrics():
                 score = self.batch_asw()
             elif batch_metric == 'wisi':
                 score = self.wisi()
-            elif batch_metric == 'kBET':
+            elif batch_metric == 'kbet':
                 score = self.kbet()
             elif batch_metric == 'graph_connect':
                 score = self.graph_connect()
+            else:
+                raise Exception('WrongBatchMetricName: batch_metric={batch_metric} does not exist!'.format(batch_metric=batch_metric))
 
             metrics_dict[batch_metric] = score
             scores_mean += score
@@ -199,15 +205,15 @@ class EvalMetrics():
                 scores_mean_avg += score
                 scores_mean_max += score
 
-            elif cell_type_metric == 'isolated_ASW':
-                score = self.cell_type_silhouette_score()
-                metrics_dict['isolated_ASW'] = score
+            elif cell_type_metric == 'isolated_asw':
+                score = self.isolated_ASW()
+                metrics_dict['isolated_asw'] = score
                 scores_mean_avg += score
                 scores_mean_max += score
 
-            elif cell_type_metric == 'isolated_labels_F1':
+            elif cell_type_metric == 'isolated_f1':
                 score = self.isolated_F1()
-                metrics_dict['isolated_F1'] = score
+                metrics_dict['isolated_f1'] = score
                 scores_mean_avg += score
                 scores_mean_max += score
 
@@ -218,7 +224,8 @@ class EvalMetrics():
 
                 scores_mean_avg += score
                 scores_mean_max += score
-
+            else:
+                raise Exception('WrongCellTypeMetricName: cell_type_metric={cell_type_metric} does not exist!'.format(cell_type_metric=cell_type_metric))
 
         scores_mean_avg = scores_mean_avg/len(cell_type_metrics)
         scores_mean_max = scores_mean_max/len(cell_type_metrics)

@@ -144,7 +144,7 @@ def extract_features_from_adata(adata,checkpoint_root,data_obs_name=None,in_feat
             X=adata.X
 
     #print(X.mean(axis=0))
-
+    print('arch, in_features, X.shape',arch,in_features,X.shape[1])
     assert in_features == X.shape[1]
 
     checkpoint=os.path.join(checkpoint_root,'checkpoint.pth')
