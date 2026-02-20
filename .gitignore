@@ -1,0 +1,7 @@
+cluster_logs/
+figures/
+*/runs/
+*/wandb/
+__pycache__/
+core.login-*
+*.vscode
